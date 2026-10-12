@@ -48,7 +48,7 @@ resource "azurerm_network_security_group" "app" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "22"
-    source_address_range       = var.admin_cidr
+    source_address_prefix      = var.admin_cidr
     destination_address_prefix = "*"
   }
 

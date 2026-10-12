@@ -121,14 +121,42 @@ jobs:
       - name: Validate Azure target design
         working-directory: terraform/azure
         run: |
-          terraform init -backend=false
-          terraform validate
+          set +e
+          init_out="$(terraform init -backend=false 2>&1)"; s1=$?
+          val_out="$(terraform validate 2>&1)"; s2=$?
+          echo "$init_out"
+          echo "$val_out"
+          {
+            echo "## terraform/azure"
+            echo '```'
+            echo "$init_out"
+            echo "$val_out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ $s1 -ne 0 ] || [ $s2 -ne 0 ]; then
+            echo "::error title=Terraform azure failed::$(printf '%s' "$init_out $val_out" | tail -5 | tr '\n' ' ')"
+            exit 1
+          fi
 
       - name: Validate AWS demo infrastructure
         working-directory: terraform/aws
         run: |
-          terraform init -backend=false
-          terraform validate
+          set +e
+          init_out="$(terraform init -backend=false 2>&1)"; s1=$?
+          val_out="$(terraform validate 2>&1)"; s2=$?
+          echo "$init_out"
+          echo "$val_out"
+          {
+            echo "## terraform/aws"
+            echo '```'
+            echo "$init_out"
+            echo "$val_out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ $s1 -ne 0 ] || [ $s2 -ne 0 ]; then
+            echo "::error title=Terraform aws failed::$(printf '%s' "$init_out $val_out" | tail -5 | tr '\n' ' ')"
+            exit 1
+          fi
 
   docker-build:
     name: Docker image build

@@ -1,0 +1,23 @@
+# Copy to terraform.tfvars (never commit terraform.tfvars) and edit:
+#   cp terraform.tfvars.example terraform.tfvars
+
+prefix     = "azuredrop"
+location   = "westeurope"
+admin_cidr = "203.0.113.4/32" # <-- your admin IP + /32
+
+vm_size              = "Standard_B2s"
+vm_admin_username    = "azureuser"
+vm_admin_ssh_public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... user@host"
+
+postgres_admin_login    = "azuredropadmin"
+postgres_admin_password = "replace-with-a-strong-password-16+"
+
+postgres_sku     = "B_Standard_B1ms"
+postgres_version = "16"
+
+blob_container_name = "azuredrop"
+
+tags = {
+  project = "azuredrop"
+  purpose = "team-capstone"
+}

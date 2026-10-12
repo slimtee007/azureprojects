@@ -1,0 +1,78 @@
+# Deploy the AzureDrop production stack to the AWS EC2 demo host.
+# Runs on main after CI passes (and manually via workflow_dispatch).
+#
+# Required repository secrets:
+#   EC2_HOST     - public IP/DNS of the demo host
+#   EC2_USER     - SSH user (ubuntu)
+#   EC2_SSH_KEY  - private key (PEM) matching the EC2 key pair
+# Deployment values (JWT_SECRET, POSTGRES_PASSWORD, CORS_ORIGINS,
+# PUBLIC_BASE_URL, AZURE_STORAGE_PUBLIC_BASE_URL) live in .env on the host.
+
+name: Deploy to AWS EC2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy containers on EC2
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          if [ -z "$SSH_KEY" ]; then
+            echo "EC2_SSH_KEY secret is not configured; nothing to deploy."
+            echo "SKIPPED=true" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Pull latest code and restart the stack
+        if: env.SKIPPED != 'true'
+        env:
+          SSH_HOST: ${{ secrets.EC2_HOST }}
+          SSH_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" '
+            set -euo pipefail
+            cd ~/azuredrop
+            git pull origin main
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker compose -f docker-compose.prod.yml ps
+          '
+
+      - name: Verify deployment health
+        if: env.SKIPPED != 'true'
+        env:
+          SSH_HOST: ${{ secrets.EC2_HOST }}
+          SSH_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$SSH_USER@$SSH_HOST" '
+            set -euo pipefail
+            for i in $(seq 1 30); do
+              curl -sf http://localhost/health && break
+              sleep 2
+            done
+            curl -sf http://localhost/health | jq -e ".status == \"healthy\""
+          '
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

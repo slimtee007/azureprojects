@@ -1,0 +1,65 @@
+# AzureDrop local development stack: PostgreSQL + Azurite + API.
+# The frontend runs on the host (`cd frontend && npm run dev`) against :5001.
+#
+#   docker compose up -d --build
+#   docker compose ps
+#   curl -s http://localhost:5001/health | jq .
+
+services:
+  postgres:
+    container_name: azuredrop-postgres
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: azuredrop
+      POSTGRES_PASSWORD: azuredrop-local-dev
+      POSTGRES_DB: azuredrop
+    ports:
+      - "5432:5432"
+    volumes:
+      - azuredrop-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U azuredrop -d azuredrop"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  azurite:
+    container_name: azuredrop-azurite
+    image: mcr.microsoft.com/azure-storage/azurite:3.33.0
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --silent
+    ports:
+      - "10000:10000"
+    volumes:
+      - azuredrop-azurite:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(10000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    container_name: azuredrop-api
+    build: ./backend
+    environment:
+      PORT: "5001"
+      DATABASE_URL: postgresql://azuredrop:azuredrop-local-dev@postgres:5432/azuredrop
+      JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-change-me}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:5173}
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      AZURE_STORAGE_PUBLIC_BASE_URL: ${AZURE_STORAGE_PUBLIC_BASE_URL:-http://127.0.0.1:10000/devstoreaccount1}
+      AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-azuredrop}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-26214400}
+      SHARE_TTL_MINUTES: ${SHARE_TTL_MINUTES:-60}
+      SIGNED_URL_TTL_MINUTES: ${SIGNED_URL_TTL_MINUTES:-15}
+    ports:
+      - "5001:5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      azurite:
+        condition: service_started
+
+volumes:
+  azuredrop-pgdata:
+  azuredrop-azurite:

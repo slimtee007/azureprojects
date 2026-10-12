@@ -1,0 +1,46 @@
+# AzureDrop frontend (React build served by Nginx, reverse proxy to the API).
+apiVersion: v1
+kind: Service
+metadata:
+  name: azuredrop-frontend
+  labels:
+    app.kubernetes.io/name: azuredrop-frontend
+    app.kubernetes.io/part-of: azuredrop
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+  selector:
+    app.kubernetes.io/name: azuredrop-frontend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azuredrop-frontend
+  labels:
+    app.kubernetes.io/name: azuredrop-frontend
+    app.kubernetes.io/part-of: azuredrop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: azuredrop-frontend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: azuredrop-frontend
+        app.kubernetes.io/part-of: azuredrop
+    spec:
+      containers:
+        - name: frontend
+          image: azuredrop-frontend:latest
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10

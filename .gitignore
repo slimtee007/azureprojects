@@ -1,0 +1,51 @@
+# Secrets and environment
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+frontend/dist/
+backend/coverage/
+coverage/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Terraform
+terraform/.terraform/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Kubernetes / secrets
+*.pem
+*.key
+deploy/kubernetes/overlays/*/secret.yaml
+!deploy/kubernetes/overlays/*/secret.example.yaml
+
+# Docker
+docker-compose.override.yml
+
+# Test artifacts
+backend/tmp/

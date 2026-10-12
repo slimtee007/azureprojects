@@ -17,10 +17,6 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.116"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
-    }
   }
 
   # Optional remote state (uncomment and configure for team use):

@@ -24,10 +24,6 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 12
-      azurite:
-        image: mcr.microsoft.com/azure-storage/azurite:3.33.0
-        ports:
-          - 10000:10000
     env:
       TEST_USE_EXTERNAL_SERVICES: "true"
       DATABASE_URL: postgresql://azuredrop:azuredrop-ci@localhost:5432/azuredrop
@@ -38,30 +34,36 @@ jobs:
       CORS_ORIGINS: http://localhost:5173
       PUBLIC_BASE_URL: http://localhost:5173
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
-      - name: Wait for PostgreSQL and Azurite
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      # Azurite runs from npm with --skipApiVersionCheck so the current Azure
+      # SDK API version is accepted (service containers cannot pass CLI flags).
+      - name: Start Azurite blob emulator
+        working-directory: backend
         run: |
+          nohup node_modules/.bin/azurite-blob --silent --location /tmp/azurite \
+            --blobPort 10000 --loose --skipApiVersionCheck > /tmp/azurite.log 2>&1 &
           for i in $(seq 1 30); do
-            if timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/5432' 2>/dev/null \
-              && timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/10000' 2>/dev/null; then
-              echo "services are up"
+            if timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/10000' 2>/dev/null \
+              && timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/5432' 2>/dev/null; then
+              echo "Azurite and PostgreSQL are up"
               exit 0
             fi
             sleep 2
           done
           echo "services did not become ready" >&2
+          cat /tmp/azurite.log || true
           exit 1
-
-      - name: Install backend dependencies
-        working-directory: backend
-        run: npm ci
 
       - name: Migrate database
         working-directory: backend
@@ -86,9 +88,9 @@ jobs:
     name: Frontend lint + build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -110,7 +112,7 @@ jobs:
     name: Terraform fmt + validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -132,7 +134,7 @@ jobs:
     name: Docker image build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Build API image
         run: docker build -t azuredrop-api:ci backend

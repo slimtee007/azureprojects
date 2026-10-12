@@ -27,7 +27,9 @@ services:
   azurite:
     container_name: azuredrop-azurite
     image: mcr.microsoft.com/azure-storage/azurite:3.33.0
-    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --silent
+    # --skipApiVersionCheck/--loose: the Azure SDK may send API versions newer
+    # than the emulator knows; the flags keep the emulator permissive.
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --silent --loose --skipApiVersionCheck
     volumes:
       - azuredrop-azurite:/data
     restart: unless-stopped

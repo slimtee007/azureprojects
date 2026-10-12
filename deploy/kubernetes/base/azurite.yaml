@@ -58,6 +58,8 @@ spec:
             - --tableHost
             - "0.0.0.0"
             - --silent
+            - --loose
+            - --skipApiVersionCheck
           ports:
             - containerPort: 10000
           volumeMounts:

@@ -177,6 +177,9 @@ terraform plan
 terraform apply
 ```
 
+CI enforces `terraform fmt -check -recursive` and `terraform validate` for
+both stacks on every pull request.
+
 **Azure target resources:** Resource Group, VNet + subnets, NSG, Linux VM,
 Storage Account + private Blob container, PostgreSQL Flexible Server
 (VNet-integrated), system-assigned Managed Identity on the VM and RBAC
@@ -264,6 +267,6 @@ More: `docker compose logs --tail=100 backend`, `docker stats`.
 
 ## Demo & submission
 
-See [`docs/demo-script.md`](docs/demo-script.md) for the 5-minute demonstration flow. The final wording to keep consistent everywhere:
+See [`docs/demo-script.md`](docs/demo-script.md) for the 5-minute demonstration flow and [`docs/slides-outline.md`](docs/slides-outline.md) for the presentation structure. The final wording to keep consistent everywhere:
 
 > **Target architecture: Azure. Local storage emulation: Azurite. Live demonstration host: AWS EC2 because Azure credits/subscription were unavailable.**

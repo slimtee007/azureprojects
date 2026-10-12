@@ -118,6 +118,20 @@ jobs:
         with:
           terraform_wrapper: false
 
+      - name: Terraform fmt check (azure + aws)
+        working-directory: terraform
+        run: |
+          set +e
+          out="$(terraform fmt -check -recursive -diff 2>&1)"; s=$?
+          echo "$out"
+          if [ $s -ne 0 ]; then
+            enc="${out//'%'/'%25'}"
+            enc="${enc//$'\n'/'%0A'}"
+            enc="${enc//$'\r'/'%0D'}"
+            echo "::error title=terraform fmt -check failed, apply this diff::$enc"
+            exit 1
+          fi
+
       - name: Validate Azure target design
         working-directory: terraform/azure
         run: |

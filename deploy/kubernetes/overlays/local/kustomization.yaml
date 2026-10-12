@@ -1,0 +1,33 @@
+# Minikube / local-cluster overlay.
+#   kubectl apply -k deploy/kubernetes/overlays/local
+#
+# Images are expected to be built into the Minikube Docker daemon first:
+#   eval $(minikube docker-env)
+#   docker build -t azuredrop-api:local backend
+#   docker build -t azuredrop-frontend:local frontend
+#
+# The secretGenerator below only contains LOCAL DEV values. Real deployments
+# must use out-of-band secrets (see base/secret.example.yaml).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: azuredrop
+
+secretGenerator:
+  - name: azuredrop-secret
+    literals:
+      - JWT_SECRET=local-minikube-jwt-secret-change-me
+      - POSTGRES_PASSWORD=azuredrop-local-dev
+      - DATABASE_URL=postgresql://azuredrop:azuredrop-local-dev@postgres:5432/azuredrop
+      - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+
+images:
+  - name: azuredrop-api
+    newName: azuredrop-api
+    newTag: local
+  - name: azuredrop-frontend
+    newName: azuredrop-frontend
+    newTag: local

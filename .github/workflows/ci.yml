@@ -1,0 +1,185 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    name: Backend tests (PostgreSQL + Azurite)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: azuredrop
+          POSTGRES_PASSWORD: azuredrop-ci
+          POSTGRES_DB: azuredrop
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U azuredrop -d azuredrop"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      TEST_USE_EXTERNAL_SERVICES: "true"
+      DATABASE_URL: postgresql://azuredrop:azuredrop-ci@localhost:5432/azuredrop
+      AZURE_STORAGE_CONNECTION_STRING: >-
+        DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;
+      AZURE_STORAGE_PUBLIC_BASE_URL: http://127.0.0.1:10000/devstoreaccount1
+      JWT_SECRET: ci-only-jwt-secret
+      CORS_ORIGINS: http://localhost:5173
+      PUBLIC_BASE_URL: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      # Azurite runs from npm with --skipApiVersionCheck so the current Azure
+      # SDK API version is accepted (service containers cannot pass CLI flags).
+      - name: Start Azurite blob emulator
+        working-directory: backend
+        run: |
+          nohup node_modules/.bin/azurite-blob --silent --location /tmp/azurite \
+            --blobPort 10000 --loose --skipApiVersionCheck > /tmp/azurite.log 2>&1 &
+          for i in $(seq 1 30); do
+            if timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/10000' 2>/dev/null \
+              && timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/5432' 2>/dev/null; then
+              echo "Azurite and PostgreSQL are up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "services did not become ready" >&2
+          cat /tmp/azurite.log || true
+          exit 1
+
+      - name: Migrate database
+        working-directory: backend
+        run: npm run migrate
+
+      - name: Run Jest tests
+        working-directory: backend
+        run: npm test
+
+      - name: Smoke test (API + /health)
+        working-directory: backend
+        run: |
+          npm start &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5001/health && break
+            sleep 2
+          done
+          curl -sf http://localhost:5001/health | tee /tmp/health.json
+          jq -e '.status == "healthy" and .database == "healthy" and .storage == "healthy"' /tmp/health.json
+
+  frontend-build:
+    name: Frontend lint + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Production build
+        working-directory: frontend
+        run: npm run build
+
+  terraform-validate:
+    name: Terraform fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform fmt check (azure + aws)
+        working-directory: terraform
+        run: |
+          set +e
+          out="$(terraform fmt -check -recursive -diff 2>&1)"; s=$?
+          echo "$out"
+          if [ $s -ne 0 ]; then
+            enc="${out//'%'/'%25'}"
+            enc="${enc//$'\n'/'%0A'}"
+            enc="${enc//$'\r'/'%0D'}"
+            echo "::error title=terraform fmt -check failed, apply this diff::$enc"
+            exit 1
+          fi
+
+      - name: Validate Azure target design
+        working-directory: terraform/azure
+        run: |
+          set +e
+          init_out="$(terraform init -backend=false 2>&1)"; s1=$?
+          val_out="$(terraform validate 2>&1)"; s2=$?
+          echo "$init_out"
+          echo "$val_out"
+          {
+            echo "## terraform/azure"
+            echo '```'
+            echo "$init_out"
+            echo "$val_out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ $s1 -ne 0 ] || [ $s2 -ne 0 ]; then
+            echo "::error title=Terraform azure failed::$(printf '%s' "$init_out $val_out" | tail -5 | tr '\n' ' ')"
+            exit 1
+          fi
+
+      - name: Validate AWS demo infrastructure
+        working-directory: terraform/aws
+        run: |
+          set +e
+          init_out="$(terraform init -backend=false 2>&1)"; s1=$?
+          val_out="$(terraform validate 2>&1)"; s2=$?
+          echo "$init_out"
+          echo "$val_out"
+          {
+            echo "## terraform/aws"
+            echo '```'
+            echo "$init_out"
+            echo "$val_out"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ $s1 -ne 0 ] || [ $s2 -ne 0 ]; then
+            echo "::error title=Terraform aws failed::$(printf '%s' "$init_out $val_out" | tail -5 | tr '\n' ' ')"
+            exit 1
+          fi
+
+  docker-build:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build API image
+        run: docker build -t azuredrop-api:ci backend
+
+      - name: Build frontend image
+        run: docker build -t azuredrop-frontend:ci frontend
